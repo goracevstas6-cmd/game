@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS:GO 2D Ultra - Team Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: white;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: radial-gradient(circle, transparent 60%, rgba(0,0,0,0.4) 100%);
+        }
+        .hud-element {
+            pointer-events: auto;
+        }
+        #buy-menu {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 23, 42, 0.98);
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            z-index: 100;
+            min-width: 380px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+        }
+        .buy-btn {
+            background: rgba(51, 65, 85, 0.5);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .buy-btn:hover {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+            transform: translateX(5px);
+        }
+        .buy-btn:active {
+            transform: scale(0.98);
+        }
+        .shop-trigger {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            pointer-events: auto;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .shop-trigger:hover {
+            background: #fbbf24;
+            color: black;
+            border-color: white;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .reloading-text {
+            animation: pulse 1s infinite;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <!-- HUD Superior -->
+        <div class="flex justify-between p-6">
+            <div class="flex flex-col gap-1">
+                <div class="bg-black/60 px-4 py-2 rounded-lg border-l-4 border-yellow-500 backdrop-blur-md">
+                    <span class="text-yellow-500 font-black text-2xl">$</span>
+                    <span id="money-display" class="text-2xl font-mono ml-1">800</span>
+                </div>
+            </div>
+            
+            <div class="bg-black/60 px-6 py-2 rounded-xl border border-white/10 text-center min-w-[140px] backdrop-blur-md">
+                <div id="game-status" class="text-[10px] tracking-widest font-black text-blue-400 uppercase mb-1">Командный бой</div>
+                <div id="timer" class="text-3xl font-mono font-bold leading-none">01:45</div>
+            </div>
+
+            <div class="bg-black/60 px-4 py-2 rounded-lg border-r-4 border-red-500 backdrop-blur-md flex items-center gap-3">
+                <div class="w-2 h-8 bg-red-500 rounded-full"></div>
+                <div id="health-display" class="text-2xl font-black font-mono">100</div>
+            </div>
+        </div>
+
+        <!-- Kill Feed -->
+        <div id="kill-feed" class="absolute top-24 right-6 flex flex-col items-end gap-2 text-sm"></div>
+
+        <!-- Shop Hint Button -->
+        <div class="shop-trigger font-bold uppercase tracking-wider text-xs" onclick="toggleBuyMenu()">
+            Магазин <span class="bg-white/20 px-1.5 py-0.5 rounded ml-1">[B]</span>
+        </div>
+
+        <!-- Weapon Info -->
+        <div class="absolute bottom-6 right-6 bg-black/70 p-5 rounded-2xl border border-white/10 min-w-[200px] backdrop-blur-lg">
+            <div id="weapon-name" class="text-sm font-black tracking-widest text-blue-400 uppercase mb-1">USP-S</div>
+            <div class="flex justify-end items-baseline gap-2">
+                <span id="ammo-current" class="text-5xl font-black font-mono">12</span>
+                <span class="text-2xl text-gray-500 font-mono">/</span>
+                <span id="ammo-reserve" class="text-2xl text-gray-500 font-mono">24</span>
+            </div>
+            <div id="reload-indicator" class="hidden text-xs text-yellow-500 font-bold uppercase mt-2 text-right reloading-text">Перезарядка...</div>
+        </div>
+
+        <!-- Buy Menu -->
+        <div id="buy-menu" class="hud-element">
+            <div class="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+                <h2 class="text-2xl font-black uppercase tracking-tighter text-white">Снаряжение</h2>
+                <span class="text-yellow-500 font-mono text-xl" id="menu-money">$800</span>
+            </div>
+            <div class="grid grid-cols-1 gap-3">
+                <button onclick="buyWeapon('deagle')" class="buy-btn p-4 rounded-xl flex justify-between items-center group">
+                    <div class="flex flex-col items-start">
+                        <span class="font-bold text-lg group-hover:text-blue-400">Desert Eagle</span>
+                        <span class="text-[10px] text-gray-400 uppercase">Пистолет большой мощности</span>
+                    </div>
+                    <span class="text-green-400 font-mono font-bold">$700</span>
+                </button>
+                <button onclick="buyWeapon('p90')" class="buy-btn p-4 rounded-xl flex justify-between items-center group">
+                    <div class="flex flex-col items-start">
+                        <span class="font-bold text-lg group-hover:text-blue-400">P90</span>
+                        <span class="text-[10px] text-gray-400 uppercase">Высокий темп стрельбы</span>
+                    </div>
+                    <span class="text-green-400 font-mono font-bold">$2350</span>
+                </button>
+                <button onclick="buyWeapon('m4a1')" class="buy-btn p-4 rounded-xl flex justify-between items-center group">
+                    <div class="flex flex-col items-start">
+                        <span class="font-bold text-lg group-hover:text-blue-400">M4A1-S</span>
+                        <span class="text-[10px] text-gray-400 uppercase">Точная винтовка с глушителем</span>
+                    </div>
+                    <span class="text-green-400 font-mono font-bold">$2900</span>
+                </button>
+                <button onclick="buyWeapon('ak47')" class="buy-btn p-4 rounded-xl flex justify-between items-center group">
+                    <div class="flex flex-col items-start">
+                        <span class="font-bold text-lg group-hover:text-blue-400">AK-47</span>
+                        <span class="text-[10px] text-gray-400 uppercase">Максимальный урон</span>
+                    </div>
+                    <span class="text-green-400 font-mono font-bold">$2700</span>
+                </button>
+                <button onclick="buyWeapon('awp')" class="buy-btn p-4 rounded-xl flex justify-between items-center group">
+                    <div class="flex flex-col items-start">
+                        <span class="font-bold text-lg group-hover:text-red-500">AWP</span>
+                        <span class="text-[10px] text-gray-400 uppercase">Один выстрел — один труп</span>
+                    </div>
+                    <span class="text-green-400 font-mono font-bold">$4750</span>
+                </button>
+            </div>
+            <p class="text-center mt-6 text-gray-500 text-[10px] uppercase tracking-widest">Нажмите [B] или [ESC] для выхода</p>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const buyMenu = document.getElementById('buy-menu');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const WEAPONS = {
+            'usps': { name: 'USP-S', damage: 25, ammo: 12, maxAmmo: 36, fireRate: 300, price: 0, color: '#4a5568', width: 22 },
+            'deagle': { name: 'Desert Eagle', damage: 65, ammo: 7, maxAmmo: 35, fireRate: 500, price: 700, color: '#94a3b8', width: 24 },
+            'p90': { name: 'P90', damage: 20, ammo: 50, maxAmmo: 100, fireRate: 75, price: 2350, color: '#475569', width: 26 },
+            'm4a1': { name: 'M4A1-S', damage: 33, ammo: 20, maxAmmo: 60, fireRate: 110, price: 2900, color: '#3b82f6', width: 32 },
+            'ak47': { name: 'AK-47', damage: 36, ammo: 30, maxAmmo: 90, fireRate: 125, price: 2700, color: '#f97316', width: 32 },
+            'awp': { name: 'AWP', damage: 150, ammo: 10, maxAmmo: 30, fireRate: 1600, price: 4750, color: '#0f172a', width: 45 }
+        };
+
+        const STATE = {
+            money: 800,
+            health: 100,
+            weapon: 'usps',
+            ammo: 12,
+            reserve: 36,
+            lastFire: 0,
+            isReloading: false,
+            roundTime: 105,
+            gameActive: true,
+            shake: 0
+        };
+
+        const player = { x: 100, y: 100, radius: 14, speed: 3.2, angle: 0, team: 'CT' };
+        const enemies = [];
+        const allies = [];
+        const bullets = [];
+        const particles = [];
+        const keys = {};
+        const mouse = { x: 0, y: 0, left: false };
+
+        const obstacles = [
+            { x: 400, y: 200, w: 60, h: 250, color: '#334155' },
+            { x: 100, y: 500, w: 450, h: 50, color: '#334155' },
+            { x: 700, y: 150, w: 250, h: 60, color: '#334155' },
+            { x: 850, y: 450, w: 60, h: 300, color: '#334155' },
+            { x: 550, y: 350, w: 120, h: 120, color: '#475569' }
+        ];
+
+        function checkCollision(x, y, radius) {
+            if (x - radius < 0 || x + radius > canvas.width || y - radius < 0 || y + radius > canvas.height) return true;
+            for (const ob of obstacles) {
+                if (x + radius > ob.x && x - radius < ob.x + ob.w && y + radius > ob.y && y - radius < ob.y + ob.h) return true;
+            }
+            return false;
+        }
+
+        function toggleBuyMenu() {
+            const isVisible = buyMenu.style.display === 'block';
+            buyMenu.style.display = isVisible ? 'none' : 'block';
+            document.getElementById('menu-money').innerText = `$${STATE.money}`;
+        }
+
+        function buyWeapon(id) {
+            const w = WEAPONS[id];
+            if(STATE.money >= w.price) {
+                STATE.money -= w.price;
+                STATE.weapon = id;
+                STATE.ammo = w.ammo;
+                STATE.reserve = w.maxAmmo;
+                STATE.isReloading = false;
+                updateHUD();
+                buyMenu.style.display = 'none';
+                addToKillFeed(`Куплено: ${w.name}`, 'text-blue-400 border-blue-500');
+            } else {
+                addToKillFeed("Недостаточно средств", 'text-red-400 border-red-500');
+            }
+        }
+
+        function reload() {
+            if(STATE.reserve <= 0 || STATE.ammo === WEAPONS[STATE.weapon].ammo || STATE.isReloading) return;
+            STATE.isReloading = true;
+            updateHUD();
+            setTimeout(() => {
+                const weapon = WEAPONS[STATE.weapon];
+                const needed = weapon.ammo - STATE.ammo;
+                const transfer = Math.min(needed, STATE.reserve);
+                STATE.ammo += transfer;
+                STATE.reserve -= transfer;
+                STATE.isReloading = false;
+                updateHUD();
+            }, 1400);
+        }
+
+        function updateHUD() {
+            document.getElementById('money-display').innerText = STATE.money;
+            document.getElementById('health-display').innerText = Math.max(0, Math.floor(STATE.health));
+            document.getElementById('weapon-name').innerText = WEAPONS[STATE.weapon].name;
+            document.getElementById('ammo-current').innerText = STATE.ammo;
+            document.getElementById('ammo-reserve').innerText = STATE.reserve;
+            document.getElementById('reload-indicator').style.display = STATE.isReloading ? 'block' : 'none';
+        }
+
+        function addToKillFeed(msg, styleClass = 'text-white border-gray-500') {
+            const t = document.createElement('div');
+            t.className = `bg-black/80 px-4 py-1.5 rounded-lg border-r-4 shadow-2xl backdrop-blur-sm transition-all duration-300 transform translate-x-10 ${styleClass}`;
+            t.innerText = msg;
+            const feed = document.getElementById('kill-feed');
+            feed.prepend(t);
+            setTimeout(() => t.style.transform = 'translateX(0)', 10);
+            setTimeout(() => {
+                t.style.opacity = '0';
+                t.style.transform = 'translateX(20px)';
+                setTimeout(() => t.remove(), 400);
+            }, 4000);
+        }
+
+        function getSafeSpawn() {
+            let x, y;
+            do {
+                x = Math.random() * (canvas.width - 100) + 50;
+                y = Math.random() * (canvas.height - 100) + 50;
+            } while (checkCollision(x, y, 20) || Math.hypot(x - player.x, y - player.y) < 200);
+            return { x, y };
+        }
+
+        function spawnEntities() {
+            enemies.length = 0;
+            allies.length = 0;
+            
+            // Спавн врагов
+            for(let i=0; i<5; i++) {
+                const pos = getSafeSpawn();
+                enemies.push({
+                    x: pos.x, y: pos.y, radius: 14, health: 100, angle: 0, lastShot: 0,
+                    speed: 1.4 + Math.random(), target: pos, wait: 0, team: 'T'
+                });
+            }
+
+            // Спавн союзников
+            for(let i=0; i<2; i++) {
+                allies.push({
+                    x: 80 + i*40, y: 80 + i*40, radius: 14, health: 100, angle: 0, lastShot: 0,
+                    speed: 1.8, target: {x: 100, y: 100}, wait: 0, team: 'CT'
+                });
+            }
+        }
+
+        function shoot(from, toX, toY, shooterTeam = 'CT', isPlayer = false) {
+            const weapon = isPlayer ? WEAPONS[STATE.weapon] : WEAPONS['m4a1'];
+            const now = Date.now();
+            
+            if(isPlayer) {
+                if(STATE.ammo <= 0) { reload(); return; }
+                if(now - STATE.lastFire < weapon.fireRate || STATE.isReloading) return;
+                STATE.ammo--;
+                STATE.lastFire = now;
+                STATE.shake = 5;
+                updateHUD();
+            }
+
+            const angle = Math.atan2(toY - from.y, toX - from.x);
+            const spread = (isPlayer && STATE.weapon === 'awp') ? 0 : 0.08;
+            const finalAngle = angle + (Math.random() - 0.5) * spread;
+
+            bullets.push({
+                x: from.x + Math.cos(angle) * 18,
+                y: from.y + Math.sin(angle) * 18,
+                vx: Math.cos(finalAngle) * 24,
+                vy: Math.sin(finalAngle) * 24,
+                damage: weapon.damage,
+                team: shooterTeam,
+                life: 60
+            });
+
+            for(let i=0; i<3; i++) {
+                particles.push({
+                    x: from.x + Math.cos(angle)*20,
+                    y: from.y + Math.sin(angle)*20,
+                    vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8,
+                    life: 1, color: (shooterTeam === 'CT') ? '#3b82f6' : '#ef4444', size: 2
+                });
+            }
+        }
+
+        function updateAI(bot, targets, friendlyTeam) {
+            if (bot.health <= 0) return;
+
+            // Поиск ближайшей цели
+            let nearest = null;
+            let minDist = 500;
+            targets.forEach(t => {
+                const d = Math.hypot(t.x - bot.x, t.y - bot.y);
+                if (d < minDist) {
+                    minDist = d;
+                    nearest = t;
+                }
+            });
+
+            // Если союзник CT, он также может видеть игрока как ориентир, но не стрелять
+            if (bot.team === 'CT' && !nearest) {
+                const dPlayer = Math.hypot(player.x - bot.x, player.y - bot.y);
+                if (dPlayer > 100) {
+                    bot.target = {x: player.x, y: player.y};
+                }
+            }
+
+            if (nearest) {
+                bot.angle = Math.atan2(nearest.y - bot.y, nearest.x - bot.x);
+                // Дистанция атаки
+                if (minDist > 150) {
+                    const mx = Math.cos(bot.angle) * bot.speed, my = Math.sin(bot.angle) * bot.speed;
+                    if (!checkCollision(bot.x + mx, bot.y, bot.radius)) bot.x += mx;
+                    if (!checkCollision(bot.x, bot.y + my, bot.radius)) bot.y += my;
+                }
+                // Стрельба
+                if (Date.now() - bot.lastShot > 1000) {
+                    shoot(bot, nearest.x, nearest.y, bot.team);
+                    bot.lastShot = Date.now();
+                }
+            } else {
+                // Патрулирование если целей нет
+                if (bot.wait > 0) bot.wait--;
+                else {
+                    const pa = Math.atan2(bot.target.y - bot.y, bot.target.x - bot.x);
+                    bot.x += Math.cos(pa) * (bot.speed * 0.5); bot.y += Math.sin(pa) * (bot.speed * 0.5);
+                    if (Math.hypot(bot.x - bot.target.x, bot.y - bot.target.y) < 30) {
+                        bot.wait = 120; bot.target = getSafeSpawn();
+                    }
+                    bot.angle = pa;
+                }
+            }
+        }
+
+        function update() {
+            if(!STATE.gameActive) return;
+
+            // Игрок
+            let dx = 0, dy = 0;
+            if(keys['KeyW']) dy -= player.speed;
+            if(keys['KeyS']) dy += player.speed;
+            if(keys['KeyA']) dx -= player.speed;
+            if(keys['KeyD']) dx += player.speed;
+
+            if(!checkCollision(player.x + dx, player.y, player.radius)) player.x += dx;
+            if(!checkCollision(player.x, player.y + dy, player.radius)) player.y += dy;
+
+            player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+            if(mouse.left && buyMenu.style.display !== 'block') shoot(player, mouse.x, mouse.y, 'CT', true);
+
+            // Пули
+            for(let i = bullets.length-1; i>=0; i--) {
+                const b = bullets[i];
+                b.x += b.vx; b.y += b.vy; b.life--;
+                if(checkCollision(b.x, b.y, 2)) b.life = 0;
+
+                // Попадание в союзников или игрока
+                if (b.team === 'T') {
+                    if (Math.hypot(b.x - player.x, b.y - player.y) < player.radius + 2) {
+                        STATE.health -= b.damage; b.life = 0; updateHUD();
+                        if(STATE.health <= 0) { addToKillFeed("ВАС УБИЛИ", "text-red-500 border-red-700"); resetRound(); }
+                    }
+                    allies.forEach(al => {
+                        if (Math.hypot(b.x - al.x, b.y - al.y) < al.radius + 2) {
+                            al.health -= b.damage; b.life = 0;
+                        }
+                    });
+                } else {
+                    // Команда CT попала в T
+                    enemies.forEach(en => {
+                        if (Math.hypot(b.x - en.x, b.y - en.y) < en.radius + 2) {
+                            en.health -= b.damage; b.life = 0;
+                            if (en.health <= 0) { 
+                                if (b.team === 'CT') { STATE.money += 300; updateHUD(); }
+                                addToKillFeed("Противник ликвидирован", "text-green-400 border-green-500");
+                            }
+                        }
+                    });
+                }
+                if(b.life <= 0) bullets.splice(i, 1);
+            }
+
+            // Обновление ботов
+            enemies.forEach((en, idx) => {
+                if (en.health <= 0) { enemies.splice(idx, 1); return; }
+                const targets = [player, ...allies];
+                updateAI(en, targets, 'T');
+            });
+
+            allies.forEach((al, idx) => {
+                if (al.health <= 0) { allies.splice(idx, 1); return; }
+                updateAI(al, enemies, 'CT');
+            });
+
+            if(enemies.length === 0) { STATE.money += 3250; addToKillFeed("Раунд выигран +$3250", "text-yellow-400 border-yellow-500"); resetRound(); }
+
+            // Частицы
+            for(let i=particles.length-1; i>=0; i--) {
+                particles[i].x += particles[i].vx; particles[i].y += particles[i].vy;
+                particles[i].life -= 0.03; if(particles[i].life <= 0) particles.splice(i, 1);
+            }
+            if(STATE.shake > 0) STATE.shake *= 0.9;
+        }
+
+        function resetRound() {
+            player.x = 80; player.y = 80; STATE.health = 100; STATE.roundTime = 105;
+            STATE.ammo = WEAPONS[STATE.weapon].ammo; STATE.reserve = WEAPONS[STATE.weapon].maxAmmo;
+            spawnEntities(); updateHUD();
+        }
+
+        function drawEntity(e, color) {
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath(); ctx.ellipse(e.x, e.y + 10, e.radius, e.radius/2, 0, 0, Math.PI*2); ctx.fill();
+
+            ctx.save();
+            ctx.translate(e.x, e.y);
+            ctx.rotate(e.angle);
+            ctx.fillStyle = color;
+            ctx.beginPath(); ctx.arc(0, 0, e.radius, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.arc(8, -5, 3, 0, Math.PI*2); ctx.arc(8, 5, 3, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(10, -3, 18, 6);
+            ctx.restore();
+
+            if (e.health < 100) {
+                ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(e.x - 15, e.y - 28, 30, 4);
+                ctx.fillStyle = '#10b981'; ctx.fillRect(e.x - 15, e.y - 28, (e.health/100)*30, 4);
+            }
+        }
+
+        function draw() {
+            ctx.save();
+            if(STATE.shake > 0.1) ctx.translate((Math.random()-0.5)*STATE.shake, (Math.random()-0.5)*STATE.shake);
+
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+            for(let i=0; i<canvas.width; i+=60) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke(); }
+            for(let i=0; i<canvas.height; i+=60) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke(); }
+
+            obstacles.forEach(ob => {
+                ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(ob.x + 8, ob.y + 8, ob.w, ob.h);
+                const grad = ctx.createLinearGradient(ob.x, ob.y, ob.x + ob.w, ob.y + ob.h);
+                grad.addColorStop(0, '#334155'); grad.addColorStop(1, '#1e293b');
+                ctx.fillStyle = grad; ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.strokeRect(ob.x + 5, ob.y + 5, ob.w - 10, ob.h - 10);
+            });
+
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            enemies.forEach(en => drawEntity(en, '#ef4444'));
+            allies.forEach(al => drawEntity(al, '#60a5fa'));
+            
+            // Player
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.beginPath(); ctx.ellipse(player.x, player.y + 10, player.radius, player.radius/2, 0, 0, Math.PI*2); ctx.fill();
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.rotate(player.angle);
+            ctx.fillStyle = '#3b82f6';
+            ctx.beginPath(); ctx.arc(0, 0, player.radius, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(8, -5, 3, 0, Math.PI*2); ctx.arc(8, 5, 3, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(10, -4, WEAPONS[STATE.weapon].width, 8);
+            ctx.restore();
+
+            bullets.forEach(b => {
+                ctx.shadowBlur = 4; ctx.shadowColor = b.team === 'CT' ? '#60a5fa' : '#ef4444';
+                ctx.fillStyle = b.team === 'CT' ? '#60a5fa' : '#ef4444';
+                ctx.beginPath(); ctx.arc(b.x, b.y, 2.5, 0, Math.PI*2); ctx.fill();
+            });
+            ctx.shadowBlur = 0;
+
+            ctx.restore();
+            requestAnimationFrame(() => { update(); draw(); });
+        }
+
+        window.addEventListener('keydown', e => {
+            keys[e.code] = true;
+            if(e.code === 'KeyB') toggleBuyMenu();
+            if(e.code === 'Escape') buyMenu.style.display = 'none';
+            if(e.code === 'KeyR') reload();
+        });
+        window.addEventListener('keyup', e => keys[e.code] = false);
+        window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+        window.addEventListener('mousedown', e => { if(e.button === 0) mouse.left = true; });
+        window.addEventListener('mouseup', e => { if(e.button === 0) mouse.left = false; });
+
+        setInterval(() => {
+            if(STATE.roundTime > 0) {
+                STATE.roundTime--;
+                const m = Math.floor(STATE.roundTime / 60), s = STATE.roundTime % 60;
+                document.getElementById('timer').innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            } else { resetRound(); }
+        }, 1000);
+
+        spawnEntities();
+        updateHUD();
+        draw();
+    </script>
+</body>
+</html>
